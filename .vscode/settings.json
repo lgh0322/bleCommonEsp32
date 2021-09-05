@@ -2,6 +2,8 @@
     "files.associations": {
         "bleprph.h": "c",
         "optional": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "freertos.h": "c",
+        "task.h": "c"
     }
 }

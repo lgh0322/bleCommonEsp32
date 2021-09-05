@@ -20,23 +20,36 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 /* BLE */
-
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "bleprph.h"
+#define PRINT_CORE tskNO_AFFINITY
+static const char *tag = "Snake";
+void print_task(void *param)
+{
 
-
-void
-app_main(void)
+    for(;;)
+    {
+        vTaskDelay(100);
+         MODLOG_DFLT(INFO, "fuck\n");
+  
+    }
+}
+static TaskHandle_t print_task_h;
+void app_main(void)
 {
 
     /* Initialize NVS it is used to store PHY calibration data */
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
 
     initBle();
-   
-  
+
+
+    xTaskCreate(&print_task, "print", 4096, NULL, 0, &print_task_h);
 }
