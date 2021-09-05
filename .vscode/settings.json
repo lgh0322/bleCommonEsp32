@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "bleprph.h": "c",
+        "optional": "c",
+        "type_traits": "c"
+    }
+}
