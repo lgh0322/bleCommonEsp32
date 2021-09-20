@@ -59,7 +59,14 @@
 #include "lwip/sockets.h"
 
 
+#include "freertos/semphr.h"
+#include "camera.h"
+#include "esp_event_loop.h"
 
+static camera_pixelformat_t s_pixel_format=CAMERA_PF_RGB565;
+
+#define CAMERA_PIXEL_FORMAT CAMERA_PF_JPEG
+#define CAMERA_FRAME_SIZE  CAMERA_FS_QVGA
 
 #define HOST_IP_ADDR "192.168.6.102"
 
@@ -86,6 +93,23 @@ static int s_retry_num = 0;
 
 
 int fuck=0;
+
+
+
+#define CONFIG_XCLK_FREQ 10000000
+#define CONFIG_D0 5
+#define CONFIG_D1 18
+#define CONFIG_D2 19
+#define CONFIG_D3 21
+#define CONFIG_D4 36
+#define CONFIG_D5 39
+#define CONFIG_D6 2
+#define CONFIG_D7 35
+#define CONFIG_PCLK 22
+#define CONFIG_VSYNC 25
+#define CONFIG_HREF 23
+#define CONFIG_SDA 26
+#define CONFIG_SCL 27
 
 
 
@@ -126,7 +150,14 @@ static void tcp_client_task(void *pvParameters)
         ESP_LOGI(TAG, "Successfully connected");
 
         while (1) {
-            int err = send(sock, payload, strlen(payload), 0);
+              esp_err_t err2 = camera_run();
+     
+        if (err2 != ESP_OK) {
+            ESP_LOGD(TAG, "Camera capture failed with error = %d", err);
+            return;
+        }
+              ESP_LOGI(TAG, "Socket created, connecting to %d", camera_get_data_size());
+            int err = send(sock, camera_get_fb(), camera_get_data_size(), 0);
             if (err < 0) {
                 ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
                 break;
@@ -294,8 +325,60 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+
+camera_config_t camera_config = {
+        .ledc_channel = LEDC_CHANNEL_0,
+        .ledc_timer = LEDC_TIMER_0,
+        .pin_d0 = CONFIG_D0,
+        .pin_d1 = CONFIG_D1,
+        .pin_d2 = CONFIG_D2,
+        .pin_d3 = CONFIG_D3,
+        .pin_d4 = CONFIG_D4,
+        .pin_d5 = CONFIG_D5,
+        .pin_d6 = CONFIG_D6,
+        .pin_d7 = CONFIG_D7,
+        .pin_pclk = CONFIG_PCLK,
+        .pin_vsync = CONFIG_VSYNC,
+        .pin_href = CONFIG_HREF,
+        .pin_sscb_sda = CONFIG_SDA,
+        .pin_sscb_scl = CONFIG_SCL,
+        .xclk_freq_hz = CONFIG_XCLK_FREQ,
+    };
+
+    camera_model_t camera_model;
+    ret = camera_probe(&camera_config, &camera_model);
+    if (ret!= ESP_OK) {
+        ESP_LOGE(TAG, "Camera probe failed with error 0x%x", ret);
+        return;
+    }
+
+    if (camera_model == CAMERA_OV7725) {
+        s_pixel_format = CAMERA_PIXEL_FORMAT;
+        camera_config.frame_size = CAMERA_FRAME_SIZE;
+        ESP_LOGI(TAG, "Detected OV7725 camera, using %s bitmap format",
+                CAMERA_PIXEL_FORMAT == CAMERA_PF_GRAYSCALE ?
+                        "grayscale" : "RGB565");
+    } else if (camera_model == CAMERA_OV2640) {
+        ESP_LOGI(TAG, "Detected OV2640 camera, using JPEG format");
+        s_pixel_format = CAMERA_PIXEL_FORMAT;
+        camera_config.frame_size = CAMERA_FRAME_SIZE;
+        if (s_pixel_format == CAMERA_PF_JPEG)
+        camera_config.jpeg_quality = 15;
+    } else {
+        ESP_LOGE(TAG, "Camera not supported");
+        return;
+    }
+
+    camera_config.pixel_format = s_pixel_format;
+    ret = camera_init(&camera_config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Camera init failed with error 0x%x", ret);
+        return;
+    }
+
  wifi_init_sta();
-    // initBle();
+//     // initBle();
 
   xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, NULL);
 
