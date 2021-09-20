@@ -63,6 +63,22 @@
 #include "camera.h"
 #include "esp_event_loop.h"
 
+
+#include "driver/mcpwm.h"
+
+
+#define SERVO_MIN_PULSEWIDTH_US (1000) // Minimum pulse width in microsecond
+#define SERVO_MAX_PULSEWIDTH_US (2000) // Maximum pulse width in microsecond
+#define SERVO_MAX_DEGREE        (90)   // Maximum angle in degree upto which servo can rotate
+
+#define SERVO_PULSE_GPIO1        (15)   // GPIO connects to the PWM signal line
+#define SERVO_PULSE_GPIO2        (16)   // GPIO connects to the PWM signal line
+static inline uint32_t example_convert_servo_angle_to_duty_us(int angle)
+{
+    return (angle + SERVO_MAX_DEGREE) * (SERVO_MAX_PULSEWIDTH_US - SERVO_MIN_PULSEWIDTH_US) / (2 * SERVO_MAX_DEGREE) + SERVO_MIN_PULSEWIDTH_US;
+}
+
+
 static camera_pixelformat_t s_pixel_format=CAMERA_PF_RGB565;
 
 #define CAMERA_PIXEL_FORMAT CAMERA_PF_JPEG
@@ -318,69 +334,89 @@ void app_main(void)
 {
 
     /* Initialize NVS it is used to store PHY calibration data */
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+//     esp_err_t ret = nvs_flash_init();
+//     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+//     {
+//         ESP_ERROR_CHECK(nvs_flash_erase());
+//         ret = nvs_flash_init();
+//     }
+//     ESP_ERROR_CHECK(ret);
 
 
-camera_config_t camera_config = {
-        .ledc_channel = LEDC_CHANNEL_0,
-        .ledc_timer = LEDC_TIMER_0,
-        .pin_d0 = CONFIG_D0,
-        .pin_d1 = CONFIG_D1,
-        .pin_d2 = CONFIG_D2,
-        .pin_d3 = CONFIG_D3,
-        .pin_d4 = CONFIG_D4,
-        .pin_d5 = CONFIG_D5,
-        .pin_d6 = CONFIG_D6,
-        .pin_d7 = CONFIG_D7,
-        .pin_pclk = CONFIG_PCLK,
-        .pin_vsync = CONFIG_VSYNC,
-        .pin_href = CONFIG_HREF,
-        .pin_sscb_sda = CONFIG_SDA,
-        .pin_sscb_scl = CONFIG_SCL,
-        .xclk_freq_hz = CONFIG_XCLK_FREQ,
+// camera_config_t camera_config = {
+//         .ledc_channel = LEDC_CHANNEL_0,
+//         .ledc_timer = LEDC_TIMER_0,
+//         .pin_d0 = CONFIG_D0,
+//         .pin_d1 = CONFIG_D1,
+//         .pin_d2 = CONFIG_D2,
+//         .pin_d3 = CONFIG_D3,
+//         .pin_d4 = CONFIG_D4,
+//         .pin_d5 = CONFIG_D5,
+//         .pin_d6 = CONFIG_D6,
+//         .pin_d7 = CONFIG_D7,
+//         .pin_pclk = CONFIG_PCLK,
+//         .pin_vsync = CONFIG_VSYNC,
+//         .pin_href = CONFIG_HREF,
+//         .pin_sscb_sda = CONFIG_SDA,
+//         .pin_sscb_scl = CONFIG_SCL,
+//         .xclk_freq_hz = CONFIG_XCLK_FREQ,
+//     };
+
+//     camera_model_t camera_model;
+//     ret = camera_probe(&camera_config, &camera_model);
+//     if (ret!= ESP_OK) {
+//         ESP_LOGE(TAG, "Camera probe failed with error 0x%x", ret);
+//         return;
+//     }
+
+//     if (camera_model == CAMERA_OV7725) {
+//         s_pixel_format = CAMERA_PIXEL_FORMAT;
+//         camera_config.frame_size = CAMERA_FRAME_SIZE;
+//         ESP_LOGI(TAG, "Detected OV7725 camera, using %s bitmap format",
+//                 CAMERA_PIXEL_FORMAT == CAMERA_PF_GRAYSCALE ?
+//                         "grayscale" : "RGB565");
+//     } else if (camera_model == CAMERA_OV2640) {
+//         ESP_LOGI(TAG, "Detected OV2640 camera, using JPEG format");
+//         s_pixel_format = CAMERA_PIXEL_FORMAT;
+//         camera_config.frame_size = CAMERA_FRAME_SIZE;
+//         if (s_pixel_format == CAMERA_PF_JPEG)
+//         camera_config.jpeg_quality = 15;
+//     } else {
+//         ESP_LOGE(TAG, "Camera not supported");
+//         return;
+//     }
+
+//     camera_config.pixel_format = s_pixel_format;
+//     ret = camera_init(&camera_config);
+//     if (ret != ESP_OK) {
+//         ESP_LOGE(TAG, "Camera init failed with error 0x%x", ret);
+//         return;
+//     }
+
+
+     mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, SERVO_PULSE_GPIO1); // To drive a RC servo, one MCPWM generator is enough
+mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0B, SERVO_PULSE_GPIO2);
+    mcpwm_config_t pwm_config = {
+        .frequency = 50, // frequency = 50Hz, i.e. for every servo motor time period should be 20ms
+        .cmpr_a = 0,     // duty cycle of PWMxA = 0
+        .counter_mode = MCPWM_UP_COUNTER,
+        .duty_mode = MCPWM_DUTY_MODE_0,
     };
+    mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &pwm_config);
 
-    camera_model_t camera_model;
-    ret = camera_probe(&camera_config, &camera_model);
-    if (ret!= ESP_OK) {
-        ESP_LOGE(TAG, "Camera probe failed with error 0x%x", ret);
-        return;
-    }
+    // while (1) {
+    //     for (int angle = -SERVO_MAX_DEGREE; angle < SERVO_MAX_DEGREE; angle++) {
+    //         ESP_LOGI(TAG, "Angle of rotation: %d", angle);
+          mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A,1500);
+           mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B,1000);
+    //         vTaskDelay(pdMS_TO_TICKS(100)); //Add delay, since it takes time for servo to rotate, generally 100ms/60degree rotation under 5V power supply
+    //     }
+    // }
 
-    if (camera_model == CAMERA_OV7725) {
-        s_pixel_format = CAMERA_PIXEL_FORMAT;
-        camera_config.frame_size = CAMERA_FRAME_SIZE;
-        ESP_LOGI(TAG, "Detected OV7725 camera, using %s bitmap format",
-                CAMERA_PIXEL_FORMAT == CAMERA_PF_GRAYSCALE ?
-                        "grayscale" : "RGB565");
-    } else if (camera_model == CAMERA_OV2640) {
-        ESP_LOGI(TAG, "Detected OV2640 camera, using JPEG format");
-        s_pixel_format = CAMERA_PIXEL_FORMAT;
-        camera_config.frame_size = CAMERA_FRAME_SIZE;
-        if (s_pixel_format == CAMERA_PF_JPEG)
-        camera_config.jpeg_quality = 15;
-    } else {
-        ESP_LOGE(TAG, "Camera not supported");
-        return;
-    }
-
-    camera_config.pixel_format = s_pixel_format;
-    ret = camera_init(&camera_config);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Camera init failed with error 0x%x", ret);
-        return;
-    }
-
- wifi_init_sta();
+//  wifi_init_sta();
 //     // initBle();
 
-  xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, NULL);
+//   xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, NULL);
 
     // xTaskCreate(&print_task, "print", 4096, NULL, 0, &print_task_h);
 }
