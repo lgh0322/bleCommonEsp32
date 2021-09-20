@@ -127,6 +127,14 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
+# Camera configuration
+#
+# CONFIG_ENABLE_TEST_PATTERN is not set
+CONFIG_OV2640_SUPPORT=y
+CONFIG_OV7725_SUPPORT=y
+# end of Camera configuration
+
+#
 # Compiler options
 #
 CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y
