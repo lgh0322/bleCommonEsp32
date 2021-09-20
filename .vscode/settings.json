@@ -4,6 +4,7 @@
         "optional": "c",
         "type_traits": "c",
         "freertos.h": "c",
-        "task.h": "c"
+        "task.h": "c",
+        "cstddef": "c"
     }
 }

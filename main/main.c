@@ -82,7 +82,7 @@ static inline uint32_t example_convert_servo_angle_to_duty_us(int angle)
 static camera_pixelformat_t s_pixel_format=CAMERA_PF_RGB565;
 
 #define CAMERA_PIXEL_FORMAT CAMERA_PF_JPEG
-#define CAMERA_FRAME_SIZE  CAMERA_FS_QVGA
+#define CAMERA_FRAME_SIZE  CAMERA_FS_SVGA
 
 #define HOST_IP_ADDR "192.168.6.102"
 
@@ -127,8 +127,55 @@ int fuck=0;
 #define CONFIG_SDA 26
 #define CONFIG_SCL 27
 
+#define CMD_READ_FILE_DATA 0xF3
+
+static unsigned char sendBuf[60000];
+unsigned char crc8_compute(unsigned char *pdata, unsigned data_size, unsigned char crc_in);
+void ReplyFileData(unsigned char* contents,int len,unsigned char* mother) {
+        mother[0] = (unsigned char) 0xA5;
+        mother[1] = (unsigned char) CMD_READ_FILE_DATA;
+        mother[2] = (unsigned char) ~CMD_READ_FILE_DATA;
+        mother[3] = (unsigned char) 0;
+        mother[4] = 0;
+        mother[5] = 0;
+
+        mother[6] =len&0xff;
+        mother[7] = (len>>8)&0xff;
+        mother[8] = (len>>16)&0xff;
+        mother[9] = (len>>24)&0xff;
+        for (int k = 0; k < len; k++) {
+            mother[10 + k] = contents[k];
+        }
+        mother[10+len] =crc8_compute(mother,10+len,0);
+    }
 
 
+unsigned char crc8_compute(unsigned char *pdata, unsigned data_size, unsigned char crc_in)
+{
+    uint8_t cnt;
+    uint8_t crc_poly = 0x07;
+    uint8_t data_tmp = 0;
+
+    while (data_size--)
+    {
+        data_tmp = *(pdata++);
+        crc_in ^= (data_tmp << 0);
+
+        for(cnt = 0; cnt < 8; cnt++)
+        {
+            if(crc_in & 0x80)
+            {
+                crc_in = (crc_in << 1) ^ crc_poly;
+            }
+            else
+            {
+                crc_in = crc_in << 1;
+            }
+        }
+    }
+
+    return crc_in;
+}
 
 
 
@@ -164,35 +211,37 @@ static void tcp_client_task(void *pvParameters)
             break;
         }
         ESP_LOGI(TAG, "Successfully connected");
-
-        while (1) {
-              esp_err_t err2 = camera_run();
+  esp_err_t err2 = camera_run();
      
         if (err2 != ESP_OK) {
             ESP_LOGD(TAG, "Camera capture failed with error = %d", err);
             return;
         }
-              ESP_LOGI(TAG, "Socket created, connecting to %d", camera_get_data_size());
-            int err = send(sock, camera_get_fb(), camera_get_data_size(), 0);
-            if (err < 0) {
-                ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-                break;
-            }
+        while (1) {
+            camera_run();
+             int lenx= camera_get_data_size();
+             ReplyFileData(camera_get_fb(),lenx,sendBuf);
+            int err = send(sock, sendBuf, lenx+11, 0);
+        
+            // if (err < 0) {
+            //     ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+            //     break;
+            // }
 
-            int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-            // Error occurred during receiving
-            if (len < 0) {
-                ESP_LOGE(TAG, "recv failed: errno %d", errno);
-                break;
-            }
-            // Data received
-            else {
-                rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string
-                ESP_LOGI(TAG, "Received %d bytes from %s:", len, host_ip);
-                ESP_LOGI(TAG, "%s", rx_buffer);
-            }
+            // int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+            // // Error occurred during receiving
+            // if (len < 0) {
+            //     ESP_LOGE(TAG, "recv failed: errno %d", errno);
+            //     break;
+            // }
+            // // Data received
+            // else {
+            //     rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string
+            //     ESP_LOGI(TAG, "Received %d bytes from %s:", len, host_ip);
+            //     ESP_LOGI(TAG, "%s", rx_buffer);
+            // }
 
-            vTaskDelay(2000 / portTICK_PERIOD_MS);
+            vTaskDelay(5 / portTICK_PERIOD_MS);
         }
 
         if (sock != -1) {
@@ -334,64 +383,64 @@ void app_main(void)
 {
 
     /* Initialize NVS it is used to store PHY calibration data */
-//     esp_err_t ret = nvs_flash_init();
-//     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-//     {
-//         ESP_ERROR_CHECK(nvs_flash_erase());
-//         ret = nvs_flash_init();
-//     }
-//     ESP_ERROR_CHECK(ret);
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
 
-// camera_config_t camera_config = {
-//         .ledc_channel = LEDC_CHANNEL_0,
-//         .ledc_timer = LEDC_TIMER_0,
-//         .pin_d0 = CONFIG_D0,
-//         .pin_d1 = CONFIG_D1,
-//         .pin_d2 = CONFIG_D2,
-//         .pin_d3 = CONFIG_D3,
-//         .pin_d4 = CONFIG_D4,
-//         .pin_d5 = CONFIG_D5,
-//         .pin_d6 = CONFIG_D6,
-//         .pin_d7 = CONFIG_D7,
-//         .pin_pclk = CONFIG_PCLK,
-//         .pin_vsync = CONFIG_VSYNC,
-//         .pin_href = CONFIG_HREF,
-//         .pin_sscb_sda = CONFIG_SDA,
-//         .pin_sscb_scl = CONFIG_SCL,
-//         .xclk_freq_hz = CONFIG_XCLK_FREQ,
-//     };
+camera_config_t camera_config = {
+        .ledc_channel = LEDC_CHANNEL_0,
+        .ledc_timer = LEDC_TIMER_0,
+        .pin_d0 = CONFIG_D0,
+        .pin_d1 = CONFIG_D1,
+        .pin_d2 = CONFIG_D2,
+        .pin_d3 = CONFIG_D3,
+        .pin_d4 = CONFIG_D4,
+        .pin_d5 = CONFIG_D5,
+        .pin_d6 = CONFIG_D6,
+        .pin_d7 = CONFIG_D7,
+        .pin_pclk = CONFIG_PCLK,
+        .pin_vsync = CONFIG_VSYNC,
+        .pin_href = CONFIG_HREF,
+        .pin_sscb_sda = CONFIG_SDA,
+        .pin_sscb_scl = CONFIG_SCL,
+        .xclk_freq_hz = CONFIG_XCLK_FREQ,
+    };
 
-//     camera_model_t camera_model;
-//     ret = camera_probe(&camera_config, &camera_model);
-//     if (ret!= ESP_OK) {
-//         ESP_LOGE(TAG, "Camera probe failed with error 0x%x", ret);
-//         return;
-//     }
+    camera_model_t camera_model;
+    ret = camera_probe(&camera_config, &camera_model);
+    if (ret!= ESP_OK) {
+        ESP_LOGE(TAG, "Camera probe failed with error 0x%x", ret);
+        return;
+    }
 
-//     if (camera_model == CAMERA_OV7725) {
-//         s_pixel_format = CAMERA_PIXEL_FORMAT;
-//         camera_config.frame_size = CAMERA_FRAME_SIZE;
-//         ESP_LOGI(TAG, "Detected OV7725 camera, using %s bitmap format",
-//                 CAMERA_PIXEL_FORMAT == CAMERA_PF_GRAYSCALE ?
-//                         "grayscale" : "RGB565");
-//     } else if (camera_model == CAMERA_OV2640) {
-//         ESP_LOGI(TAG, "Detected OV2640 camera, using JPEG format");
-//         s_pixel_format = CAMERA_PIXEL_FORMAT;
-//         camera_config.frame_size = CAMERA_FRAME_SIZE;
-//         if (s_pixel_format == CAMERA_PF_JPEG)
-//         camera_config.jpeg_quality = 15;
-//     } else {
-//         ESP_LOGE(TAG, "Camera not supported");
-//         return;
-//     }
+    if (camera_model == CAMERA_OV7725) {
+        s_pixel_format = CAMERA_PIXEL_FORMAT;
+        camera_config.frame_size = CAMERA_FRAME_SIZE;
+        ESP_LOGI(TAG, "Detected OV7725 camera, using %s bitmap format",
+                CAMERA_PIXEL_FORMAT == CAMERA_PF_GRAYSCALE ?
+                        "grayscale" : "RGB565");
+    } else if (camera_model == CAMERA_OV2640) {
+        ESP_LOGI(TAG, "Detected OV2640 camera, using JPEG format");
+        s_pixel_format = CAMERA_PIXEL_FORMAT;
+        camera_config.frame_size = CAMERA_FRAME_SIZE;
+        if (s_pixel_format == CAMERA_PF_JPEG)
+        camera_config.jpeg_quality = 10;
+    } else {
+        ESP_LOGE(TAG, "Camera not supported");
+        return;
+    }
 
-//     camera_config.pixel_format = s_pixel_format;
-//     ret = camera_init(&camera_config);
-//     if (ret != ESP_OK) {
-//         ESP_LOGE(TAG, "Camera init failed with error 0x%x", ret);
-//         return;
-//     }
+    camera_config.pixel_format = s_pixel_format;
+    ret = camera_init(&camera_config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Camera init failed with error 0x%x", ret);
+        return;
+    }
 
 
      mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, SERVO_PULSE_GPIO1); // To drive a RC servo, one MCPWM generator is enough
@@ -413,10 +462,10 @@ mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0B, SERVO_PULSE_GPIO2);
     //     }
     // }
 
-//  wifi_init_sta();
+ wifi_init_sta();
 //     // initBle();
 
-//   xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, NULL);
+  xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, NULL);
 
     // xTaskCreate(&print_task, "print", 4096, NULL, 0, &print_task_h);
 }
