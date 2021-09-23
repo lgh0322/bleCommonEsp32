@@ -84,9 +84,9 @@ static camera_pixelformat_t s_pixel_format=CAMERA_PF_RGB565;
 #define CAMERA_PIXEL_FORMAT CAMERA_PF_JPEG
 #define CAMERA_FRAME_SIZE  CAMERA_FS_SVGA
 
-#define HOST_IP_ADDR "192.168.6.102"
+#define HOST_IP_ADDR "81.71.163.52"
 
-#define PORT 9999
+#define PORT 5555
 static const char *payload = "Message from ESP32 ";
 
 
