@@ -427,7 +427,7 @@ esp_err_t camera_run() {
 	gettimeofday(&tv_end, NULL);
 	int time_ms = (tv_end.tv_sec - tv_start.tv_sec) * 1000
 			+ (tv_end.tv_usec - tv_start.tv_usec) / 1000;
-	ESP_LOGI(TAG, "Frame %d done in %d ms", s_state->frame_count, time_ms);
+	ESP_LOGI(TAG, "1Frame %d done in %d ms", s_state->frame_count, time_ms);
 	s_state->frame_count++;
 	return ESP_OK;
 }
