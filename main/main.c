@@ -72,6 +72,11 @@
 
 #define HASH_LEN 32
 
+static TaskHandle_t print_task_h;
+static TaskHandle_t send_task_h;
+static TaskHandle_t ota_task_h;
+static TaskHandle_t receive_task_h;
+
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
 /* The interface name value can refer to if_desc in esp_netif_defaults.h */
 #if CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF_ETH
@@ -83,8 +88,8 @@ static const char *bind_interface_name = "sta";
 
 static const char *TAG = "simple_ota_example";
 int fuck = 0;
-int fuck2=0;
-int fuck3=0;
+int fuck2 = 0;
+int fuck3 = 0;
 
 #define OTA_URL_SIZE 256
 
@@ -117,9 +122,7 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
 }
 
 void simple_ota_example_task(void *pvParameter) {
-    while (fuck3 != 1) {
-         vTaskDelay(1555 / portTICK_PERIOD_MS);
-    }
+    vTaskSuspend(NULL);
     ESP_LOGI(TAG, "Starting OTA example");
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
     esp_netif_t *netif = get_example_netif_from_desc(bind_interface_name);
@@ -250,7 +253,7 @@ static int s_retry_num = 0;
 
 #define CMD_READ_FILE_DATA 0xF3
 
-static unsigned char sendBuf[10000];
+static unsigned char sendBuf[60000];
 unsigned char crc8_compute(unsigned char *pdata, unsigned data_size,
                            unsigned char crc_in);
 void ReplyFileData(unsigned char *contents, int len, unsigned char *mother) {
@@ -294,7 +297,6 @@ unsigned char crc8_compute(unsigned char *pdata, unsigned data_size,
 }
 int sock;
 
-
 static void tcp_client_task(void *pvParameters) {
     char rx_buffer[128];
     char host_ip[] = HOST_IP_ADDR;
@@ -326,27 +328,18 @@ static void tcp_client_task(void *pvParameters) {
                 break;
             }
             ESP_LOGI(TAG, "Successfully connected");
-            esp_err_t err2 = camera_run();
-
-            if (err2 != ESP_OK) {
-                ESP_LOGD(TAG, "Camera capture failed with error = %d", err);
-                return;
-            }
             fuck2 = 1;
             while (1) {
-                // camera_run();
-                // int lenx = camera_get_data_size();
-                // ReplyFileData(camera_get_fb(), lenx, sendBuf);
-                // int err = send(sock, sendBuf, lenx + 11, 0);
+                esp_err_t err = camera_run();
+                if (err != ESP_OK) {
+                    ESP_LOGD(TAG, "Camera capture failed with error = %d", err);
+                    return;
+                }
+                vTaskDelay(10 / portTICK_PERIOD_MS);
 
-            
-                vTaskDelay(5 / portTICK_PERIOD_MS);
-            }
-
-            if (sock != -1) {
-                ESP_LOGE(TAG, "Shutting down socket and restarting...");
-                shutdown(sock, 0);
-                close(sock);
+                int lenx = camera_get_data_size();
+                ReplyFileData(camera_get_fb(), lenx, sendBuf);
+                send(sock, sendBuf, 11 + lenx, 0);
             }
         }
         vTaskDelay(20 / portTICK_PERIOD_MS);
@@ -359,15 +352,25 @@ int currentIndex = 0;
 unsigned char tcpcmd[100];
 
 void po2(int size) {
+      unsigned int a;
+        unsigned int b;
     switch (tcpcmd[1]) {
     case 0xf4:
-
+         a=tcpcmd[10]+tcpcmd[11]*256;
+       b=tcpcmd[12]+tcpcmd[13]*256;
+           ESP_LOGI(TAG, "leaft %d    right   %d",a,b);
+        mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, a);
+        mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B, b);
         break;
 
     case 0xf5:
-             ESP_LOGI(TAG, "fuckReceivegggggggggggg");
-        fuck3=1;
-
+        ESP_LOGI(TAG, "fuckReceivegggggggggggg");
+        vTaskSuspend(send_task_h);
+        // vTaskSuspend(receive_task_h);
+        vTaskDelete(send_task_h);
+        // vTaskDelete(receive_task_h);
+        vTaskResume(ota_task_h);
+        ESP_LOGI(TAG, "fuckReceivehhhhhhhhhhhh");
         break;
 
     default:
@@ -432,7 +435,7 @@ static void tcp_client_task2(void *pvParameters) {
         }
         // Data received
         else {
-             ESP_LOGI(TAG, "fuckReceive");
+            ESP_LOGI(TAG, "fuckReceive");
             for (k = 0; k < len; k++) {
                 tcpReceive[currentIndex + k] = rx_buffer[k];
             }
@@ -549,7 +552,7 @@ void print_task(void *param) {
         MODLOG_DFLT(INFO, "fuck\n");
     }
 }
-static TaskHandle_t print_task_h;
+
 void app_main(void) {
 
     /* Initialize NVS it is used to store PHY calibration data */
@@ -628,8 +631,7 @@ void app_main(void) {
     //     for (int angle = -SERVO_MAX_DEGREE; angle < SERVO_MAX_DEGREE;
     //     angle++) {
     //         ESP_LOGI(TAG, "Angle of rotation: %d", angle);
-    mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, 1500);
-    mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B, 1000);
+
     //         vTaskDelay(pdMS_TO_TICKS(100)); //Add delay, since it takes time
     //         for servo to rotate, generally 100ms/60degree rotation under 5V
     //         power supply
@@ -642,8 +644,9 @@ void app_main(void) {
     esp_wifi_set_ps(WIFI_PS_NONE);
 
     xTaskCreate(&simple_ota_example_task, "ota_example_task", 8192, NULL, 5,
-                NULL);
-      xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, NULL);
- xTaskCreate(tcp_client_task2, "tcp_client2", 4096, NULL, 5, NULL);
+                &ota_task_h);
+    xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, &send_task_h);
+    xTaskCreate(tcp_client_task2, "tcp_client2", 4096, NULL, 5,
+                &receive_task_h);
     // xTaskCreate(&print_task, "print", 4096, NULL, 0, &print_task_h);
 }
